@@ -64,28 +64,27 @@ class SAC:
         # Replay memory
         self.memory = PrioritizedReplay(capacity=int(BUFFER_SIZE))
 
-    # step 函数的参数：state,action,reward,next_state,done,step
-    # 所有参数为单步的参数
-    # 其中step用于beta的退火
+        self.per = 0
+
     def step(self, state, action, reward, next_state, done, DATA_FLAG):
         """Save experience in replay memory, and use random sample from buffer to learn."""
         # Save experience / reward
 
         self.memory.push(state, action, reward, next_state, done, DATA_FLAG)
 
-    def update(self):
+    def update(self,demo_priority):
         # Learn, if enough samples are available in memory
         if len(self.memory) > self.BATCH_SIZE:
             experiences = self.memory.sample(self.BATCH_SIZE)
-            self.learn(experiences, self.GAMMA)
-    #
+            self.learn(experiences, self.GAMMA,demo_priority)
+
     def act(self, state, add_noise=True):
         """Returns actions for given state as per current policy."""
         state = torch.from_numpy(state).unsqueeze(0).float().to(self.device)
         action = self.actor_local.get_action(state).detach()
         return action
 
-    def learn(self,experiences, gamma):
+    def learn(self,experiences, gamma, n_episode):
         """Updates actor, critics and entropy_alpha parameters using given batch of experience tuples.
         Q_targets = r + γ * (min_critic_target(next_state, actor_target(next_state)) - α *log_pi(next_action|next_state))
         Critic_loss = MSE(Q, Q_target)
@@ -106,6 +105,9 @@ class SAC:
         dones = torch.FloatTensor(dones).to(self.device).unsqueeze(1)
         weights = torch.FloatTensor(weights).unsqueeze(1)
         DATA_FLAG = torch.FloatTensor(DATA_FLAG).unsqueeze(1)
+
+        demo_percentage = DATA_FLAG.sum() / DATA_FLAG.numel()
+        self.per = round(demo_percentage.item(),2)
 
         # ---------------------------- update critic ---------------------------- #
         # Get predicted next-state actions and Q values from target models
@@ -128,7 +130,13 @@ class SAC:
         td_error2 = Q_targets.detach() - Q_2
         critic1_loss = 0.5 * (td_error1.pow(2) * weights).mean()
         critic2_loss = 0.5 * (td_error2.pow(2) * weights).mean()
-        prios = abs(((td_error1 + td_error2) / 2.0 + 0.99 * DATA_FLAG + 1e-5).squeeze())
+
+        _lambda = max(-5, 1 - n_episode * 2.0 / 20000)
+
+        prios =(
+                torch.clamp(torch.abs(td_error1 + td_error2) / 2.0 + _lambda * DATA_FLAG,min = 0)
+             + 1e-5).squeeze()
+
         # Update critics
         # critic 1
         self.critic1_optimizer.zero_grad()
@@ -171,6 +179,8 @@ class SAC:
         # ----------------------- update target networks ----------------------- #
         self.soft_update(self.critic1, self.critic1_target, self.TAU)
         self.soft_update(self.critic2, self.critic2_target, self.TAU)
+
+
 
     def soft_update(self, local_model, target_model, tau):
         """Soft update model parameters.

@@ -415,7 +415,11 @@ class Dojo:
         max_x = np.exp(x) / np.sum(np.exp(x), axis=0)
 
         # locate all the maximum point
-        select_guidance = np.random.choice(a=len(self.oppo.suggestions), p=max_x)
+        # select_guidance = np.random.choice(a=len(self.oppo.suggestions), p=max_x)
+        # select_guidance = np.random.choice(a=len(self.oppo.suggestions))
+
+        guidance = [0,len(self.oppo.suggestions)]
+        select_guidance = np.random.choice(a=guidance)
 
         return select_guidance
 

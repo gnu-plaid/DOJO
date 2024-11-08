@@ -5,7 +5,7 @@ class PrioritizedReplay(object):
     Proportional Prioritization
     """
 
-    def __init__(self, capacity, alpha=0.6, beta_start=0.4, beta_frames=100000):
+    def __init__(self, capacity, alpha=0.6, beta_start=0.4, beta_frames=20000):
         self.alpha = alpha
         self.beta_start = beta_start
         self.beta_frames = beta_frames

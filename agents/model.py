@@ -5,10 +5,9 @@ import torch.nn.functional as F
 from torch.distributions import Normal, MultivariateNormal
 
 def hidden_init(layer):
-    # 获得隐藏层的节点个数
+
     fan_in = layer.weight.data.size()[0]
 
-    # 范围如下
     lim = 1. / np.sqrt(fan_in)
     return (-lim, lim)
 
@@ -71,7 +70,6 @@ class Actor_SAC(nn.Module):
 
         return action, log_prob
 
-    # action为归一化
     def get_action(self, state):
         """
         returns the action based on a squashed gaussian policy. That means the samples are obtained according to:
