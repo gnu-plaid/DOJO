@@ -1,21 +1,11 @@
 import random
-
 import numpy as np
-
-from env_dojo.opponent import OPPONENT
-from env_dojo.robot import ROBOT
+from env_dojo.opponent import Opponent
+from env_dojo.robot import Robot
 from env_dojo.utils import *
 import env_dojo.config as config
 
-'''
-# the settings used in ENV:
-# 1. thrust_success_reward : reward given when a valid thrust is performed
-# 2. thrust_failure_reward : reward given when a thrusting movement is made but miss its target
-# 3. collision_reward : given when a collision is inspected
-# 4. out_range_reward : given when either is stepped out of the dojo
-# 5. reward : a reward given every time step
-# 6. time_threshold: maximum time in the env
-'''
+
 class Dojo:
     def __init__(self,
                  thrust_success_reward=0,
@@ -25,21 +15,30 @@ class Dojo:
                  reward=-1,
                  time_threshold=500,
                  ):
-
-        # reward setting
+        """
+        :param thrust_success_reward: reward given when a valid thrust is performed
+        :param thrust_failure_reward: reward given when a thrusting movement is made but miss its target
+        :param collision_reward: given when a collision is inspected
+        :param out_range_reward: given when either is stepped out of the dojo
+        :param reward: a reward given every time step
+        :param time_threshold: maximum time in the env
+        """
+        #--------------------reward setting--------------------#
         self.thrust_success_reward = thrust_success_reward
         self.thrust_failure_reward = thrust_failure_reward
         self.collision_reward = collision_reward
         self.out_range_reward = out_range_reward
         self.reward = reward
 
-        # setting other parameter
+        # --------------------env config--------------------#
         self.grid_size = config.grid_size
         self.fps = config.fps
 
-        self.robot = ROBOT()
-        self.oppo = OPPONENT()
+        # --------------------reset players--------------------#
+        self.robot = Robot()
+        self.oppo = Opponent()
 
+        # --------------------env reset--------------------#
         # set a timer
         self.time_since_start = 0
 
@@ -52,7 +51,7 @@ class Dojo:
         self.valid_thrust_duration = config.valid_thrusting_duration_time
         self.valid_thrust_period_list = [False] * (int(self.valid_thrust_duration * self.fps) + 1)
 
-        # add some para for demo
+        # add demo para
         self.dashing_ready = False
         self.thrusting_ready = False
         self.detour_done = False
@@ -77,7 +76,7 @@ class Dojo:
 
     def reset(self, position_required=False, position=None):
         if position is None:
-            position = []
+            position = np.array([])
         self.robot.reset()
         self.oppo.reset(position_required, position)
 
@@ -89,42 +88,50 @@ class Dojo:
         self.thrusting_ready = False
 
         self.ending = None
-
         if self.guidance_success_rate:
             self.target_index = self.softmax_guidance_rule_select()
 
-    '''
-    load ang save in generating the guidance data
-    '''
+
     def load(self,robo_state_dic,oppo_para):
+        """
+        load and save in generating the guidance data
+        using vine
+        """
         self.robot.load_state_dic(robo_state_dic)
         self.oppo.reset(given = True, given_position= oppo_para)
 
     def save(self):
+        """
+        load and save in generating the guidance data
+        using vine
+        """
         robo_state_dic = self.robot.save_state_dic()
         oppo_para = self.oppo.position.tolist()+[self.oppo.aiming_angle]
         return robo_state_dic,oppo_para
 
-    # avoid crash/ out-range/ impossible attacking point
+
     def avoid_a_bad_start(self):
-        bad_ini = False
-        collision = self.collision_inspection()
-        for i in self.oppo.suggestions:
-            out = self.out_range_inspection(i[0])
-            if out:
-                bad_ini = True
-        if collision:
-            bad_ini = True
-
-        if bad_ini:
+        """
+        avoid crash/ out-range/ impossible attacking point
+        """
+        if self.collision_inspection():
             self.reset()
+        else:
+            for suggestion in self.oppo.suggestions:
+                if self.out_range_inspection(suggestion[0]):
+                    self.reset()
+                    break
 
-    # input the action to the simulator
     def step(self,
              robot_command=np.array([0., 0., 0., 0.]),
              opponent_command=np.array([0])  # if the opponent is movable
              ):
+        """
+        :param robot_command:  [target_speed_x,target_speed_y,target_rotating_speed,thrust]
+        :param opponent_command: TODO
+        """
         self.robot.robot_step(robot_command)
+
         # if oppo is movable
         # TODO
         self.oppo.opponent_step(opponent_command)
@@ -132,9 +139,10 @@ class Dojo:
         # timer
         self.time_since_start += 1
 
-    # TODO
-    # observe environment, getting the state
     def get_state(self):
+        """
+        get the state in  22 dim
+        """
         # normalize the position to [-1,1]
         # observe the state under ROBOT COORDINATION
         # relative position at time step t
@@ -151,194 +159,187 @@ class Dojo:
         relative_angle_t_1 = np.array([angle_between(self.robot.aiming_angle_t_1, self.oppo.aiming_angle) / 180],
                                       dtype=float)
 
+        # distance between robot and oppo at time step t and t-1
         distance_t = np.array([distance_between(self.robot.position,self.oppo.position) / self.grid_size])
         distance_t_1 = np.array([distance_between(self.robot.position_t_1,self.oppo.position) / self.grid_size])
 
+        # maximum thrust count
         max_t = self.fps * (self.robot.withdrawal_time + self.robot.holding_time + self.robot.thrusting_time)
-        # thrust_count
+        # normalized thrust_count
         thrust_count = np.array([self.robot.shinai_thrusting_time / max_t])
 
-        threshold_dash_distance = 60
-        # dash distance
+        # maximum dash distance
+        MAX_DASH_DIS = 60
+
+        # normalized dash distance
         if self.robot.dashing_distance:
             d_d = self.robot.dashing_distance
-            dash_distance = np.array([d_d / threshold_dash_distance])
+            dash_distance = np.array([d_d / MAX_DASH_DIS])
         else:
             dash_distance = np.array([0.])
 
-        # tip_pos
+        # tip pos at time step t
         tip_pos = (self.robot.shinai_tip[0] - self.oppo.position) / self.grid_size
         tip_pos = rotate_vector(tip_pos, -self.robot.aiming_angle)
 
+        # tip pos at time step t-1
         tip_pos_t_1 = (self.robot.shinai_tip_t_1[0] - self.oppo.position) / self.grid_size
         tip_pos_t_1 = rotate_vector(tip_pos_t_1, -self.robot.aiming_angle_t_1)
 
-        V_bound = np.array([120.,120.,85.])
-        # velocity0
-        speed = self.robot.speed / V_bound
-        speed_t_1 = self.robot.speed_t_1 / V_bound
+        V_BOUND = np.array([120.,120.,85.])
+        # normalized speed
+        speed = self.robot.speed / V_BOUND
+        speed_t_1 = self.robot.speed_t_1 / V_BOUND
 
-        # pos
+        # normalized pos
         pos = self.robot.position / self.grid_size
 
         # concatenate
+        # 22dim
         state = np.concatenate(
             (
-                r_relative_pos,  # re_position
-                r_relative_pos_t_1,  # re_position t-1
-                relative_angle,  # re_angle
-                relative_angle_t_1,  # re_angle t-1
+                r_relative_pos,  # position at opponent coordinate, at time step t and t-1
+                r_relative_pos_t_1,
+                relative_angle,  # angle at opponent coordinate, at time step t and t-1
+                relative_angle_t_1,
 
-                distance_t,
+                distance_t, # distance between opponent and robot at time step t and t-1
                 distance_t_1,
 
-                thrust_count,
-                dash_distance,
-                tip_pos,
+                thrust_count, # thrust progress
+                dash_distance, # dash distance
+
+                tip_pos, # tip-pos at opponent coordinate, at time step t and t-1
                 tip_pos_t_1,
 
-                speed,
+                speed, # speed at t and t-1
                 speed_t_1,
 
-                pos,
-
+                pos, # position at world coordinate, at time step t
             ), axis=0
         )
         return state
 
-    # detect the robot and opponent have a collision
     def collision_inspection(self) -> bool:
+        """
+        detect the robot and opponent have a collision
+        :return: if collision box overpass
+        """
         r_collision_box = self.robot.robot_collision_box
         o_collision_box = self.oppo.oppo_collision_box
-        # detect contour and diagonal
         detect = [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2], [1, 3]]
 
-        collision = False
-        for i in detect:
-            for j in detect:
-                v_1 = np.array([r_collision_box[i[0]], r_collision_box[i[1]]])
-                v_2 = np.array([o_collision_box[j[0]], o_collision_box[j[1]]])
-                collision = collision or if_straddle(v_1, v_2)
+        collision = any(
+            if_straddle([r_collision_box[i[0]], r_collision_box[i[1]]], [o_collision_box[j[0]], o_collision_box[j[1]]])
+            for i in detect for j in detect
+        )
 
         return collision
 
-    # detect a thrust is valid or invalid
     def robo_thrust_inspection(self) -> tuple[bool, int]:
+        """
+        detect whether robot make a valid thrust
+        :return: if robot satisfied:
+        1) straddle with opponent defence
+        2) tip is opposite to defence surface
+        """
         valid_thrust = False
         hitting_point = -1
-        for i in range(len(self.oppo.defence_list) - 1):
-            defence_surface = [np.array(self.oppo.defence_list[i + 1]), np.array(self.oppo.defence_list[i])]
-            tip = [np.array(self.robot.shinai_tip[0]), np.array(self.robot.shinai_tip[1])]
-            straddle = if_straddle(tip, defence_surface)
-            #print(straddle)
 
-            if straddle:
-                defence_v = np.array(self.oppo.defence_list[i + 1]) - np.array(self.oppo.defence_list[i])
+        for i in range(len(self.oppo.defence_list) - 1):
+            defence_start, defence_end = map(np.array, (self.oppo.defence_list[i + 1], self.oppo.defence_list[i]))
+            tip_start, tip_end = map(np.array, self.robot.shinai_tip)
+
+            if if_straddle([tip_start, tip_end], [defence_start, defence_end]):
+                defence_v = defence_start - defence_end
                 defence_v_n = rotate_vector(defence_v, 90)
-                tip_v = tip[0] - tip[1]
-                opposite = is_vector_opposite(defence_v_n, tip_v, 170)
-                if opposite:
+
+                if is_vector_opposite(defence_v_n, tip_start - tip_end, 170):
                     valid_thrust = True
                     hitting_point = i
                     break
 
         return valid_thrust, hitting_point
 
-    # if dashing distance above a certain threshold then verify as True
     def robo_valid_dash_inspection(self) -> bool:
-        valid_dash = True if self.robot.dashing_distance > self.valid_dash_threshold else False
-        return valid_dash
+        """
+        if dashing distance above a certain threshold : verify as True
+        """
+        return True if self.robot.dashing_distance > self.valid_dash_threshold else False
 
-    # if the sum of diff_pos and diff_ang -> 0:
-    # verify as True
     def stay_still_inspection(self) -> bool:
+        """
+        if the sum of diff_pos and diff_ang -> 0 : verify as True
+        """
         diff_dis = distance_between(self.robot.position, self.robot.position_t_1)
         diff_ang = abs(angle_between(self.robot.aiming_angle, self.robot.aiming_angle_t_1))
-        diff_all = diff_ang + diff_dis
-        still = True if diff_all < self.valid_still_threshold else False
-        return still
+        return True if (diff_ang + diff_dis) < self.valid_still_threshold else False
 
-    # if the given dots is out of grid_size
     def out_range_inspection(self, given_dots) -> bool:
-        out = False
-        for i in given_dots:
-            if i >= self.grid_size or i <= 0:
-                out = True
-                break
-        return out
+        """
+        if position out range : verify as True
+        """
+        return any(i >= self.grid_size or i <= 0 for i in given_dots)
 
     def check_done(self) -> [bool, float, int]:
+        """
+        check the ending of env
+        :return: done : bool,reward : float,hitting point : int
+        """
         hitting_point = -1
-
-        # return done and reward
         collision = self.collision_inspection()
+        thrust_start, thrust_end = [self.fps * r for r in self.valid_thrusting_range]
+        done = False
+        reward = self.reward
+        self.ending = None
 
-        # give the  threshold of thrusting
-        thrust_valid_range_start = self.fps * self.valid_thrusting_range[0]
-        thrust_valid_range_end = self.fps * self.valid_thrusting_range[1]
-        # case1 collision1
+        # Case 1: Timeout
         if self.time_since_start >= self.time_threshold:
-            done = False
-            reward = self.reward
             self.ending = 'time out'
-        else:
-            done = False
-            reward = self.reward
-            self.ending = None
 
-
-        if collision:
-            done = False
+        # Case 2: Collision
+        elif collision:
             reward += self.collision_reward
             self.ending = 'collision'
 
-        # case2 valid thrust
-        if thrust_valid_range_end >= self.robot.shinai_thrusting_time >= thrust_valid_range_start:
+        # Case 3: Valid thrust attempt
+        elif thrust_start <= self.robot.shinai_thrusting_time <= thrust_end:
             valid_thrust_t, hitting_point = self.robo_thrust_inspection()
-            self.valid_thrust_period_list.append(valid_thrust_t)
-            self.valid_thrust_period_list.pop(0)
-            valid_thrust_t_range = True
-            for i in self.valid_thrust_period_list:
-                valid_thrust_t_range = valid_thrust_t_range and i
+            self.valid_thrust_period_list = self.valid_thrust_period_list[1:] + [valid_thrust_t]
 
+            valid_thrust_t_range = all(self.valid_thrust_period_list)
             still = self.stay_still_inspection()
             dash_distance = self.robo_valid_dash_inspection()
-            # the thrust is valid ONLY when the robot stays still, dashed a certain distance, and making valid thrust
 
-            # print(self.robot.dashing_distance)
-            # print(valid_thrust_t_range,still,dash_distance)
-
-            valid_thrust = valid_thrust_t_range and still and dash_distance
-
-            # valid_thrust
-            if valid_thrust:
+            # Check if thrust is valid
+            if valid_thrust_t_range and still and dash_distance:
                 done = True
                 reward = self.thrust_success_reward
                 self.ending = 'valid thrusting'
             else:
-                done = False
                 reward += self.reward
 
-        # case3 invalid thrust
-        if self.robot.shinai_thrusting_time > thrust_valid_range_end:
-            # even an invalid thrust is made, the episode CANNOT be stopped
-            done = False
+        # Case 4: Invalid thrust
+        elif self.robot.shinai_thrusting_time > thrust_end:
             reward += self.thrust_failure_reward
             self.ending = 'X'
 
-        # case4 out of range
-        if self.out_range_inspection(self.robot.position):
-            done = False
+        # Case 5: Out of range
+        elif self.out_range_inspection(self.robot.position):
             reward += self.out_range_reward
             self.ending = 'out range'
 
 
         return done, reward, hitting_point
 
-    # STILL MIGHT BE A BAD SOLUTION TO A HARD-EXPLORING PROJECT
-    # guide the robot by a certain rule
     def act_by_rule(self, loc=5, scale=3):
-
+        """
+        THE MAIN IDEA TO A HARD-EXPLORING PROJECT
+        guide the robot by a rule-based guidance
+        :param loc: \mu
+        :param scale: \sigma
+        :return: action by guidance
+        """
         target = self.oppo.suggestions[self.target_index]
 
         starting_point = target[0]
@@ -409,27 +410,26 @@ class Dojo:
         action = np.array([x, y, omega, thrust])/self.robot.action_bound
         return action
 
-    def softmax_guidance_rule_select(self):
+    def softmax_guidance_rule_select(self, mode = 'uniform'): # uniform select soft-max
         guidance_list = np.array(self.guidance_success_rate)
         x = (np.max(guidance_list, axis=0) - guidance_list) / max(np.max(guidance_list, axis=0), 1)
         max_x = np.exp(x) / np.sum(np.exp(x), axis=0)
 
         # locate all the maximum point
-        # select_guidance = np.random.choice(a=len(self.oppo.suggestions), p=max_x)
-        # select_guidance = np.random.choice(a=len(self.oppo.suggestions))
-
-        guidance = [0,len(self.oppo.suggestions)-1]
-        select_guidance = np.random.choice(a=guidance)
-
+        if mode == 'uniform':
+            select_guidance = np.random.choice(a=len(self.oppo.suggestions))
+        elif mode == 'select':
+            guidance = [0, len(self.oppo.suggestions) - 1]
+            select_guidance = np.random.choice(a=guidance)
+        elif mode == 'soft-max':
+            select_guidance = np.random.choice(a=len(self.oppo.suggestions), p=max_x)
+        else: # use uniform as DEFAULT
+            select_guidance = np.random.choice(a=len(self.oppo.suggestions))
         return select_guidance
 
     def update_success_rate(self, success_point):
         self.guidance_success_rate[success_point] += 1
 
-
-#
-#
-#
 # FOR TEST ONLY
 if __name__ == '__main__':
     env = Dojo()

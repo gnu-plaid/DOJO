@@ -8,11 +8,6 @@ import env_dojo.config as config
 from env_dojo.env import Dojo
 from env_dojo.utils import *
 
-
-#####
-#
-#####
-
 class Render(Dojo):
     def __init__(self, scaling_ratio=1.):
         # basic settings and dojo parts

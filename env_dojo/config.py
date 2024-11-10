@@ -29,8 +29,6 @@ D = 0.814724
 E = -0.38297
 
 #-----thrusting part-----#
-
-# para of shinai
 shinai_length = 52
 shinai_tip_length = 6
 
@@ -49,27 +47,22 @@ withdrawal_time = 0.1
 # setting the valid thrusting time
 # means during the following range, the thrusting is considered as valid
 valid_thrusting_time_range = [0.2,0.4]
-# define the
 valid_thrusting_duration_time = 0.1
 
 #-----dashing part-----#
-
-# dashing part
 # set the maximum robot dashing time(s)
 valid_dash_threshold = 12.
 # para for still
 valid_still_threshold = 2
 
 #-----inspection part-----#
-
 # define the collision box
 robo_collision_box_x = 120
 robo_collision_box_y = 100
 
 #--------------------OPPONENT--------------------#
-
 # define the dots presenting defence
-# find more details in README.OPPONENT
+# TODO
 defence_center_front_dis = 10
 defence_center_back_dis = 10
 defence_back_length = 36
@@ -77,12 +70,7 @@ defence_dots = [[2,0],[4,10],[4,10],[4,10],[4,20],[4,10],[6,10]]
 
 # make a suggestion for hitting others
 # the ideal hitting distance should be given out
-#####
-# ALTERING THIS PARAMETER MAY CAUSE SOMETHING INTERESTING
-# TODO
-
 ideal_starting_distance = 130
-#ideal_thrusting_distance = 100
 ideal_stopping_distance = 100
 
 # define the collision box
@@ -90,7 +78,6 @@ oppo_collision_box_x = 50
 oppo_collision_box_y = 40
 
 #--------------------RENDER--------------------#
-
 # dojo setting
 dojo_color = [150,150,150]
 
@@ -114,6 +101,3 @@ shinai_tip_contour = 'orange'
 shinai_hilt_end_distance = 13
 shinai_hilt_diameter = 5
 shinai_hilt_color = 'orange'
-
-# opponent setting
-# same as moving

@@ -2,19 +2,20 @@ import env_dojo.config as config
 from env_dojo.utils import *
 
 
-'''
-Define the ROBOT
-ROBOT will be initialized in the middle of DOJO, facing the angle of 0
-To control the robot, using function *robot_step*
-the command should be a tuple of 4 [int,int,int,int]
-The dynamics model of agv credits to NAKAGAWA Y.and NIE S.
-find more details in paper : #TODO
-'''
 
-class ROBOT(object):
+
+class Robot(object):
+    """
+    Define the ROBOT
+    ROBOT will be initialized in the middle of DOJO, facing the angle of 0
+    To control the robot, using function *robot_step*
+    the command should be a tuple of 4 [int,int,int,int]
+    The dynamics model of agv credits to NAKAGAWA Y.and NIE S.
+    find more details in paper : #TODO
+    """
     def __init__(self):
-        #-----DEFAULT----#
-
+        # ----------------------------------------Config----------------------------------------#
+        #--------------------basic config--------------------#
         self.grid_size = config.grid_size
         self.fps = config.fps
 
@@ -37,7 +38,7 @@ class ROBOT(object):
         self.E = config.E
         self.para = np.array([self.A, self.B, self.C, self.D, self.E])
 
-        # --------------------thrusting config--------------------#
+        #--------------------thrusting config--------------------#
         self.shinai_end_x = config.shinai_end_x
         self.shinai_end_y = config.shinai_end_y
         self.shinai_thrusting_length = config.shinai_thrusting_length
@@ -47,7 +48,29 @@ class ROBOT(object):
         self.shinai_length = config.shinai_length
         self.shinai_tip_length = config.shinai_tip_length
 
-        #--------------------moving part--------------------#
+        # thrshold setting
+        thrust_threshold = self.fps * self.thrusting_time
+        hold_threshold = self.fps * self.holding_time
+        withdrawal_threshold = self.fps * self.withdrawal_time
+
+        # update new length
+        # 3 phases
+        self.T_1 = thrust_threshold
+        self.T_2 = thrust_threshold + hold_threshold
+        self.T_3 = thrust_threshold + hold_threshold + withdrawal_threshold
+
+        #--------------------inspection config--------------------#
+        self._box_mat = np.array([[1., 1.],
+                                  [-1., 1.],
+                                  [-1., -1.],
+                                  [1, -1.]])
+        # get the collision box after initialize
+        self.robot_collision_box_x = config.robo_collision_box_x // 2
+        self.robot_collision_box_y = config.robo_collision_box_y // 2
+
+        #----------------------------------------Initialize----------------------------------------#
+
+        #--------------------moving part ini--------------------#
         self.__move_ini__()
 
         #--------------------thrusting part--------------------#
@@ -60,19 +83,11 @@ class ROBOT(object):
         self.state_ini = self.__state_dic_ini__()
 
         #--------------------inspection part--------------------#
-        self._box_mat = np.array([[1., 1.],
-                                  [-1., 1.],
-                                  [-1., -1.],
-                                  [1, -1.]])
-        # get the collision box after initialize
-        self.robot_collision_box_x = config.robo_collision_box_x // 2
-        self.robot_collision_box_y = config.robo_collision_box_y // 2
-
         # get the collision_box
         self.robot_collision_box = self.collision_box()
 
         #--------------------define the action bound---------------------#
-        self.action_bound = np.array([120,120,85,1])
+        self.action_bound = np.array([self.motor_max_speed,self.motor_max_speed,self.max_turning_speed,1])
 
 
     def __move_ini__(self):
@@ -94,7 +109,7 @@ class ROBOT(object):
         self.omega_target_t_1 = self.initial_omega_target_t_1
 
     def __thrust_ini__(self):
-        # for state
+        # thrust para
         self.shinai_origin = self.position + self.robot_x_axis * self.shinai_end_x + self.robot_y_axis * self.shinai_end_y
         self.shinai_tip = np.array([self.shinai_origin + self.robot_y_axis * self.shinai_length,
                                     self.shinai_origin + self.robot_y_axis * (
@@ -115,7 +130,11 @@ class ROBOT(object):
         self.shinai_origin_t_1 = self.shinai_origin
         self.aiming_angle_t_1 = self.initial_angle
 
-    def __state_dic_ini__(self):
+    def __state_dic_ini__(self) -> dict:
+        """
+        for initialize
+        :return: dic of initialize
+        """
         state_ini = {
             #--------------------moving part--------------------#
             'position':self.initial_position,
@@ -145,8 +164,10 @@ class ROBOT(object):
         }
         return state_ini
 
-    # load state dic
     def load_state_dic(self,state_dic):
+        """
+        load the precise state in state dic
+        """
         # --------------------moving part--------------------#
         self.position = state_dic['position']
         self.aiming_angle = state_dic['aiming_angle']
@@ -173,15 +194,17 @@ class ROBOT(object):
         self.shinai_origin_t_1 = state_dic['shinai_origin_t_1']
         self.aiming_angle_t_1 = state_dic['aiming_angle_t_1']
 
-    # RESET robot
     def reset(self):
+        """
+        reset the robot
+        position and angle will be reset to Middle of the DOJO, facing down
+        others will be reset to Default
+        """
         self.load_state_dic(self.state_ini)
         # get the collision_box
         self.robot_collision_box = self.collision_box()
 
-    # save state dic
-    # return in dic
-    def save_state_dic(self):
+    def save_state_dic(self) -> dict:
         state_ini = {
             # --------------------moving part--------------------#
             'position':self.position,
@@ -211,11 +234,11 @@ class ROBOT(object):
         }
         return state_ini
 
-    '''
-    calculate the real velocity by target speed
-    NOTICE: command of target speed should be in *INT*
-    '''
-    def calculate_velocity(self, target_speed: np.array([float, float, float])):  # target_speed:[Vx,Vy,VC]
+    def calculate_velocity(self, target_speed: np.array([float, float, float])):
+        """
+        calculate the real velocity by target speed
+        NOTICE: In practice, command of target speed should be in *INT* <- as robot only receives int as input
+        """
         # renew the observation
         self.speed_t_1 = self.speed
         self.aiming_angle_t_1 = self.aiming_angle
@@ -234,6 +257,7 @@ class ROBOT(object):
         ])
         omega_target = (FKM.dot(target_int)).astype(float)
         omega_target = np.clip(omega_target, -self.motor_max_speed, self.motor_max_speed)
+
         # weird stuff of THIS robot
         for i in range(4):
             if self.omega_t_0[i] * omega_target[i] < -1 and not self.omega_t_1[i] * omega_target[i] < -1:
@@ -274,41 +298,31 @@ class ROBOT(object):
         #
         self.shoulder = self.position + self.robot_x_axis * self.shinai_end_x
 
-    '''
-    thrusting is currently modeled as three parts
-    1. 0.0s - 0.3s thrust forward
-    2. 0.3s - 0.4s hold still
-    3. 0.4s - 0.5s withdrawal
-    change THIS function if a new thrusting model is proposed
-    '''
     def calculate_thrusting_length(self, thrust_command: np.array(int)):
-
+        """
+        thrusting is currently modeled as three parts
+        1. 0.0s - 0.3s thrust forward
+        2. 0.3s - 0.4s hold still
+        3. 0.4s - 0.5s withdrawal
+        change the paras mentioned above in /env_dojo/config.py
+        """
         self.shinai_tip_t_1 = self.shinai_tip
         self.shinai_origin_t_1 = self.shinai_origin
+        self.thrusting_length_t_1 = self.shinai_thrusting_length
 
         if thrust_command > 0 or self.shinai_thrusting_time > 0:
             self.shinai_thrusting_time += 1
 
         # setting the threshold
-        thrust_threshold = self.fps * self.thrusting_time
-        hold_threshold = self.fps * self.holding_time
-        withdrawal_threshold = self.fps * self.withdrawal_time
 
-        # update new length
-        self.thrusting_length_t_1 = self.shinai_thrusting_length
-        # 3 phases
-        threshold_1 = thrust_threshold
-        threshold_2 = thrust_threshold + hold_threshold
-        threshold_3 = thrust_threshold + hold_threshold + withdrawal_threshold
 
         # judging which phases and the thrust length of current phase
-        if 0 < self.shinai_thrusting_time <= threshold_1:
-            thrust_length = self.shinai_thrusting_time * self.shinai_thrusting_length / thrust_threshold
-        elif threshold_1 < self.shinai_thrusting_time <= threshold_2:
+        if self.shinai_thrusting_time <= self.T_1:
+            thrust_length = self.shinai_thrusting_time * self.shinai_thrusting_length / self.T_1
+        elif self.shinai_thrusting_time <= self.T_2:
             thrust_length = self.shinai_thrusting_length
-        elif threshold_2 < self.shinai_thrusting_time <= threshold_3:
-            thrust_length = (1 - (
-                    self.shinai_thrusting_time - threshold_2) / withdrawal_threshold) * self.shinai_thrusting_length
+        elif self.shinai_thrusting_time <= self.T_3:
+            thrust_length = (1 - (self.shinai_thrusting_time - self.T_2) / (self.T_3-self.T_2)) * self.shinai_thrusting_length
         else:
             thrust_length = 0
             self.shinai_thrusting_time = 0
@@ -316,40 +330,36 @@ class ROBOT(object):
         # update the end
         shinai_end = self.position + self.robot_x_axis * self.shinai_end_x + self.robot_y_axis * self.shinai_end_y
         self.shinai_tip = np.array([shinai_end + self.robot_y_axis * (self.shinai_length + thrust_length),
-                                    shinai_end + self.robot_y_axis * (
-                                            self.shinai_length + thrust_length - self.shinai_tip_length)])
+                                    shinai_end + self.robot_y_axis * (self.shinai_length + thrust_length - self.shinai_tip_length)])
 
         # update state
         self.thrusting_length_t = thrust_length
 
-    '''
-    dash is now only a conception for robot to determine when ang where the attack starts
-    change THIS function to altering dashing model
-    the dashing is model as:
-    1. record the point robot decide to dash (dash_time = 1)
-    2. calculate the distance on robot y_axis (dashi_time > 1)
-    3. reset the start point
-    '''
+
     def calculate_dash(self):
+        """
+        dash is now only a conception for robot to determine when and where the attack starts
+        change THIS function to altering dashing model
+        the dashing is model as:
+        1. record the point robot decide to dash (dash_time = 1)
+        2. calculate the distance on robot y_axis (dashi_time > 1)
+        3. reset the start point
+        """
         # renew start point
         if self.dashing_time == 0:
             self.dash_start_point = np.clip(self.position, 0, self.grid_size)
 
-        if self.shinai_thrusting_time>0:
-            self.dashing_time += 1
-        else:
-            self.dashing_time = 0
+        # update the dashing time as the dashing is on-going
+        self.dashing_time = self.dashing_time + 1 if self.shinai_thrusting_time > 0 else 0
 
         # calculating dashing distance
         # reset to zero when not dashing
-        # print(self.dashing_time)
-        if self.dashing_time > 0:
-            self.dashing_distance = (self.position - self.dash_start_point).dot(self.robot_y_axis.T)
-        else:
-            self.dashing_distance = 0.
+        self.dashing_distance = (self.position - self.dash_start_point).dot(self.robot_y_axis.T) if self.shinai_thrusting_time > 0 else 0
 
-    # get robot collision box
-    def collision_box(self):
+    def collision_box(self) -> list:
+        """
+        :return: collision box
+        """
         box = []
         wheel_center_points = self._box_mat.dot(
             np.array([[self.robot_collision_box_x, 0], [0, self.robot_collision_box_y]]))
@@ -359,17 +369,18 @@ class ROBOT(object):
             box.append(r_v)
         return box
 
-    '''
-    input the command to control the robot
-    command is arranged as: [MOVING COMMAND : 3 , THRUSTING COMMAND : 1, DASHING COMMAND : 1]
-    '''
+
     def robot_step(self, action: np.array([int, int, int, int])):
-        # MOVING PART
+        """
+           input the command to control the robot
+           command is arranged as: [MOVING COMMAND :3 , THRUSTING/DASHING COMMAND -1]
+           """
+        # moving part
         action = action * self.action_bound
         moving_command = action[:3]
         self.calculate_velocity(moving_command)
 
-        # THRUSTING PART
+        # thrusting part
         thrusting_command = action[3]
         self.calculate_thrusting_length(thrusting_command)
         self.calculate_dash()
