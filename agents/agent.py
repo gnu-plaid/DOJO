@@ -9,9 +9,11 @@ from agents.model import Actor_SAC,Critic_SAC
 from agents.PER_buffer import PrioritizedReplay
 
 class SAC:
-    """Interacts with and learns from the environment."""
-    def __init__(self, state_size, action_size, random_seed,
+    def __init__(self,
+                 state_size, action_size,
+                 random_seed,
                  device,
+                 n_episode,
                  LR_ACTOR = 5e-4,
                  LR_CRITIC = 5e-4,
                  WEIGHT_DECAY = 0,
@@ -20,18 +22,11 @@ class SAC:
                  GAMMA = 0.99,
                  TAU = 1e-2,
                  action_prior="uniform"):
-        """Initialize an Agent object.
 
-        Params
-        ======
-            state_size (int): dimension of each state
-            action_size (int): dimension of each action
-            random_seed (int): random seed
-        """
         self.state_size = state_size
         self.action_size = action_size
         self.seed = random.seed(random_seed)
-
+        self.n_episode = n_episode
         self.target_entropy = -action_size  # -dim(A)
         self.alpha = 1
         self.log_alpha = torch.tensor([0.0], requires_grad=True)
@@ -64,12 +59,10 @@ class SAC:
         # Replay memory
         self.memory = PrioritizedReplay(capacity=int(BUFFER_SIZE))
 
-        self.per = 0
+        self.data_per = 0
 
     def step(self, state, action, reward, next_state, done, DATA_FLAG):
-        """Save experience in replay memory, and use random sample from buffer to learn."""
-        # Save experience / reward
-
+        """Save experience in replay memory"""
         self.memory.push(state, action, reward, next_state, done, DATA_FLAG)
 
     def update(self,demo_priority):
@@ -78,13 +71,13 @@ class SAC:
             experiences = self.memory.sample(self.BATCH_SIZE)
             self.learn(experiences, self.GAMMA,demo_priority)
 
-    def act(self, state, add_noise=True):
+    def act(self, state):
         """Returns actions for given state as per current policy."""
         state = torch.from_numpy(state).unsqueeze(0).float().to(self.device)
         action = self.actor_local.get_action(state).detach()
         return action
 
-    def learn(self,experiences, gamma, n_episode):
+    def learn(self,experiences, gamma, episode):
         """Updates actor, critics and entropy_alpha parameters using given batch of experience tuples.
         Q_targets = r + γ * (min_critic_target(next_state, actor_target(next_state)) - α *log_pi(next_action|next_state))
         Critic_loss = MSE(Q, Q_target)
@@ -107,7 +100,7 @@ class SAC:
         DATA_FLAG = torch.FloatTensor(DATA_FLAG).unsqueeze(1)
 
         demo_percentage = DATA_FLAG.sum() / DATA_FLAG.numel()
-        self.per = round(demo_percentage.item(),2)
+        self.data_per = round(demo_percentage.item(),2)
 
         # ---------------------------- update critic ---------------------------- #
         # Get predicted next-state actions and Q values from target models
@@ -131,7 +124,7 @@ class SAC:
         critic1_loss = 0.5 * (td_error1.pow(2) * weights).mean()
         critic2_loss = 0.5 * (td_error2.pow(2) * weights).mean()
 
-        _lambda = max(-5, 1 - n_episode * 2.0 / 20000)
+        _lambda = max(-1, 1 - episode * 2.0 /self.n_episode)
 
         prios =(
                 torch.clamp(torch.abs(td_error1 + td_error2) / 2.0 + _lambda * DATA_FLAG,min = 0)
@@ -180,8 +173,6 @@ class SAC:
         self.soft_update(self.critic1, self.critic1_target, self.TAU)
         self.soft_update(self.critic2, self.critic2_target, self.TAU)
 
-
-
     def soft_update(self, local_model, target_model, tau):
         """Soft update model parameters.
         θ_target = τ*θ_local + (1 - τ)*θ_target
@@ -194,6 +185,8 @@ class SAC:
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
-# TODO
-# can SAC use NStepBackup?
+
+# wait, can SAC use NStepBackup?
+# doesn't make sense on N-step Q-value update
 # class NStepBackup():
+#   pass

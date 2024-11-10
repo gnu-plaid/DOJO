@@ -7,6 +7,15 @@ import time
 import random
 from collections import deque
 
+def check_path():
+    folder_path = "./checkpoints"
+
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+        print(f"Folder'{folder_path}' has been created.")
+    else:
+        print(f"Folder '{folder_path}' exists.")
+
 def train():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -29,7 +38,7 @@ def train():
     action_size = env.action_dim
 
     #initialize agent
-    agent = SAC(state_size=state_size, action_size=action_size, random_seed=seed,action_prior="uniform",device=device)  # "normal"
+    agent = SAC(state_size=state_size, action_size=action_size, random_seed=seed,action_prior="uniform",device=device, n_episode=n_episodes)  # "normal"
     start_time = time.time()
     scores_deque = deque(maxlen=print_every)
     percentage_deque = deque(maxlen=n_trains)
@@ -67,7 +76,7 @@ def train():
             env.step(action_v)
 
             # get done reward next_state
-            done, reward, _ = env.check_done()
+            done, reward, hitting_point = env.check_done()
             next_state = env.get_state()
 
             action = torch.from_numpy(action_v).view(1, -1).float()
@@ -94,12 +103,12 @@ def train():
         else:
             demo_deque.append(0)
             if reward == 0:
-                env.update_success_rate(_)
+                env.update_success_rate(hitting_point)
 
         demo_freq = np.mean(demo_deque)
         for _ in range(n_trains):
             agent.update(demo_freq)
-            percentage_deque.append(agent.per)
+            percentage_deque.append(agent.data_per)
 
         # mean score
         scores_deque.append(score)
@@ -127,4 +136,5 @@ def train():
     print("Training took: {} min".format((end_time - start_time) / 60))
 
 if __name__ == '__main__':
+    check_path()
     train()
