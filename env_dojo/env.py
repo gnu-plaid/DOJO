@@ -418,7 +418,7 @@ class Dojo:
         # select_guidance = np.random.choice(a=len(self.oppo.suggestions), p=max_x)
         # select_guidance = np.random.choice(a=len(self.oppo.suggestions))
 
-        guidance = [0,len(self.oppo.suggestions)]
+        guidance = [0,len(self.oppo.suggestions)-1]
         select_guidance = np.random.choice(a=guidance)
 
         return select_guidance
