@@ -86,6 +86,11 @@ def is_vector_opposite(vector1: np.array([float, float]),
     vector2 = vector2/np.linalg.norm(vector2)
     return True if vector1.dot(vector2.T) <= np.cos(np.deg2rad(threshold)) else False
 
+def clamp(value, low, high):
+    """
+    clip(low,high)
+    """
+    return max(min(value, high), low)
 
 if __name__ == '__main__':
     # FOR TEST

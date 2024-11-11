@@ -336,78 +336,65 @@ class Dojo:
         """
         THE MAIN IDEA TO A HARD-EXPLORING PROJECT
         guide the robot by a rule-based guidance
-        :param loc: \mu
-        :param scale: \sigma
+        :param loc: mu
+        :param scale: sigma
         :return: action by guidance
         """
+        # load the target
         target = self.oppo.suggestions[self.target_index]
+        starting_point,stopping_point,ang_sugg = target
 
-        starting_point = target[0]
-        stopping_point = target[1]
-        ang_sugg = target[2]
-
+        # define the thrusting point
         thrusting_point = 0.6 * target[0] + 0.4 * target[1]
 
-        dis_start = distance_between(self.robot.shinai_origin, starting_point)
-        dis_thrust = distance_between(self.robot.shinai_origin, thrusting_point)
-        dis_stop = distance_between(self.robot.shinai_origin, stopping_point)
+        dis_start, dis_thrust, dis_stop = (distance_between(self.robot.shinai_origin, point) for point in
+                                           (starting_point, thrusting_point, stopping_point))
 
         ang = abs(angle_between(self.robot.aiming_angle, ang_sugg))
-
         now_point = np.rad2deg(np.arctan2(self.oppo.position[0] - self.robot.position[0],
                                           self.oppo.position[1] - self.robot.position[1])) + 180
 
-        if abs(angle_between(now_point, self.oppo.aiming_angle)) > 100:
-            self.detour_done = True
-        else:
-            self.detour_done = False
+        # detour judgment
+        self.detour_done = True if abs(angle_between(now_point, self.oppo.aiming_angle)) > 100 else False
 
+        # if detour
         if self.detour_done:
             left = self.oppo.suggestions[-1][0]
             right = self.oppo.suggestions[0][0]
-            dis_left = distance_between(left, self.robot.position)
-            dis_right = distance_between(right, self.robot.position)
-            side_dot = left if dis_left < dis_right else right
+            side_dot = left if distance_between(left, self.robot.position) < distance_between(right, self.robot.position) else right
 
-            dis = self.robot.shinai_origin - side_dot
-            dis = rotate_vector(dis, -self.robot.aiming_angle)
-            if side_dot is left:
-                diff_angle = angle_between(self.robot.aiming_angle, self.oppo.suggestions[-1][2])
-            else:
-                diff_angle = angle_between(self.robot.aiming_angle, self.oppo.suggestions[0][2])
+            dis = rotate_vector(self.robot.shinai_origin - side_dot, -self.robot.aiming_angle)
+            diff_angle = angle_between(self.robot.aiming_angle,
+                                       self.oppo.suggestions[0 if side_dot != left else -1][2])
 
         else:
             if dis_start + ang < np.random.normal(loc, scale) and self.robot.dashing_time < 1:
                 self.dashing_ready = True
-
             elif self.robot.shinai_thrusting_time >= self.valid_thrusting_range[1] * self.fps and self.dashing_ready:
                 self.dashing_ready = False
 
+            target_point = starting_point if not self.dashing_ready else stopping_point
+            dis = self.robot.shinai_origin - target_point
+            dis = rotate_vector(dis, -self.robot.aiming_angle)
+            diff_angle = angle_between(self.robot.aiming_angle, ang_sugg)
 
-            if not self.dashing_ready :
-                dis = self.robot.shinai_origin - starting_point
-                dis = rotate_vector(dis, -self.robot.aiming_angle)
-                diff_angle = angle_between(self.robot.aiming_angle, ang_sugg)
+        x = clamp(-dis[0] * np.random.normal(loc, scale), -self.robot.motor_max_speed, self.robot.motor_max_speed)
+        y = clamp(-dis[1] * np.random.normal(loc, scale), -self.robot.motor_max_speed, self.robot.motor_max_speed)
+        omega = clamp(-diff_angle * np.random.normal(loc, scale), -self.robot.max_turning_speed, self.robot.max_turning_speed)
 
+        if self.dashing_ready:
+            if dis_thrust < 5:
+                thrust = 1
+            elif dis_stop < 1 and self.robot.shinai_thrusting_time <= 1:
+                self.dashing_ready = False
+                thrust = 0
             else:
-                dis = self.robot.shinai_origin - stopping_point
-                dis = rotate_vector(dis, -self.robot.aiming_angle)
-                diff_angle = angle_between(self.robot.aiming_angle, ang_sugg)
-
-
-        x = max(min(-dis[0] * (np.random.normal(loc, scale)), 120), -120)
-        y = max(min(-dis[1] * (np.random.normal(loc, scale)), 120), -120)
-        omega = max(min(-diff_angle * (np.random.normal(loc, scale)), 85), -85)
-
-        if self.dashing_ready and dis_thrust < 5:
-            thrust = 1
-        elif self.dashing_ready and dis_stop < 1 and not self.robot.shinai_thrusting_time>1:
-            self.dashing_ready = False
-            thrust = 0
+                thrust = 0
         else:
             thrust = 0
 
         action = np.array([x, y, omega, thrust])/self.robot.action_bound
+
         return action
 
     def softmax_guidance_rule_select(self, mode = 'uniform'): # uniform select soft-max

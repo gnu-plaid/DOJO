@@ -13,7 +13,6 @@ class SAC:
                  state_size, action_size,
                  random_seed,
                  device,
-                 n_episode,
                  LR_ACTOR = 5e-4,
                  LR_CRITIC = 5e-4,
                  WEIGHT_DECAY = 0,
@@ -26,7 +25,6 @@ class SAC:
         self.state_size = state_size
         self.action_size = action_size
         self.seed = random.seed(random_seed)
-        self.n_episode = n_episode
         self.target_entropy = -action_size  # -dim(A)
         self.alpha = 1
         self.log_alpha = torch.tensor([0.0], requires_grad=True)
@@ -65,11 +63,11 @@ class SAC:
         """Save experience in replay memory"""
         self.memory.push(state, action, reward, next_state, done, DATA_FLAG)
 
-    def update(self,demo_priority):
+    def update(self,demo_priority,n_episode):
         # Learn, if enough samples are available in memory
         if len(self.memory) > self.BATCH_SIZE:
             experiences = self.memory.sample(self.BATCH_SIZE)
-            self.learn(experiences, self.GAMMA,demo_priority)
+            self.learn(experiences, self.GAMMA,demo_priority,n_episode)
 
     def act(self, state):
         """Returns actions for given state as per current policy."""
@@ -77,7 +75,7 @@ class SAC:
         action = self.actor_local.get_action(state).detach()
         return action
 
-    def learn(self,experiences, gamma, episode):
+    def learn(self,experiences, gamma, episode,n_episode):
         """Updates actor, critics and entropy_alpha parameters using given batch of experience tuples.
         Q_targets = r + γ * (min_critic_target(next_state, actor_target(next_state)) - α *log_pi(next_action|next_state))
         Critic_loss = MSE(Q, Q_target)
@@ -124,7 +122,7 @@ class SAC:
         critic1_loss = 0.5 * (td_error1.pow(2) * weights).mean()
         critic2_loss = 0.5 * (td_error2.pow(2) * weights).mean()
 
-        _lambda = max(-1, 1 - episode * 2.0 /self.n_episode)
+        _lambda = max(-1, 1 - episode * 2.0 /n_episode)
 
         prios =(
                 torch.clamp(torch.abs(td_error1 + td_error2) / 2.0 + _lambda * DATA_FLAG,min = 0)

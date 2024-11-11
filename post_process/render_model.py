@@ -27,9 +27,9 @@ def render(turns, scaling_ratio = 0.7, print_Qvalue = True):
             state = env_render.get_state()
             # print(state)
             state_tensor = torch.tensor([state], dtype=torch.float)
-            command = agent.act(state)[0].detach().numpy()
+            # command = agent.act(state)[0].detach().numpy()
 
-            # command = env_render.act_by_rule(loc=10,scale = 3)
+            command = env_render.act_by_rule(loc=10,scale = 3)
 
             action_tensor = torch.tensor([command], dtype=torch.float)
             q_value = agent.critic1(state_tensor, action_tensor)[0].detach().numpy()

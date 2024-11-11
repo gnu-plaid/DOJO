@@ -38,7 +38,7 @@ def train():
     action_size = env.action_dim
 
     #initialize agent
-    agent = SAC(state_size=state_size, action_size=action_size, random_seed=seed,action_prior="uniform",device=device, n_episode=n_episodes)  # "normal"
+    agent = SAC(state_size=state_size, action_size=action_size, random_seed=seed,action_prior="uniform",device=device)  # "normal"
     start_time = time.time()
     scores_deque = deque(maxlen=print_every)
     percentage_deque = deque(maxlen=n_trains)
@@ -107,7 +107,7 @@ def train():
 
         demo_freq = np.mean(demo_deque)
         for _ in range(n_trains):
-            agent.update(demo_freq)
+            agent.update(demo_freq,n_episode=n_episodes)
             percentage_deque.append(agent.data_per)
 
         # mean score
