@@ -14,7 +14,6 @@ def hidden_init(layer):
 # SAC actor-critic:actor
 class Actor_SAC(nn.Module):
     """Actor (Policy) Model."""
-
     def __init__(self, state_size, action_size, seed,
                  device,
                  hidden_size=512,

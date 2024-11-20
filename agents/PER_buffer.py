@@ -14,7 +14,6 @@ class PrioritizedReplay(object):
     def beta_by_frame(self, frame_idx):
         """
         Linearly increases beta from beta_start to 1 over time from 1 to beta_frames.
-
         3.4 ANNEALING THE BIAS (Paper: PER)
         We therefore exploit the flexibility of annealing the amount of importance-sampling
         correction over time, by defining a schedule on the exponent

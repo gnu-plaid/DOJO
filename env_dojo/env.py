@@ -365,7 +365,7 @@ class Dojo:
 
             dis = rotate_vector(self.robot.shinai_origin - side_dot, -self.robot.aiming_angle)
             diff_angle = angle_between(self.robot.aiming_angle,
-                                       self.oppo.suggestions[0 if side_dot != left else -1][2])
+                                       self.oppo.suggestions[-1 if side_dot is left else 0][2])
 
         else:
             if dis_start + ang < np.random.normal(loc, scale) and self.robot.dashing_time < 1:

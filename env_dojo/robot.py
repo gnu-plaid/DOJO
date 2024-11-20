@@ -2,8 +2,6 @@ import env_dojo.config as config
 from env_dojo.utils import *
 
 
-
-
 class Robot(object):
     """
     Define the ROBOT
@@ -89,7 +87,6 @@ class Robot(object):
         #--------------------define the action bound---------------------#
         self.action_bound = np.array([self.motor_max_speed,self.motor_max_speed,self.max_turning_speed,1])
 
-
     def __move_ini__(self):
         self.initial_speed = np.array([0., 0., 0.]).astype(float)  # Vx, Vy, VC
         self.initial_omega_t_0 = np.array([0., 0., 0., 0.]).astype(float)  # omega(t)
@@ -163,6 +160,7 @@ class Robot(object):
             'aiming_angle_t_1':self.initial_angle,
         }
         return state_ini
+
 
     def load_state_dic(self,state_dic):
         """
@@ -335,7 +333,6 @@ class Robot(object):
         # update state
         self.thrusting_length_t = thrust_length
 
-
     def calculate_dash(self):
         """
         dash is now only a conception for robot to determine when and where the attack starts
@@ -368,7 +365,6 @@ class Robot(object):
             r_v += self.position
             box.append(r_v)
         return box
-
 
     def robot_step(self, action: np.array([int, int, int, int])):
         """

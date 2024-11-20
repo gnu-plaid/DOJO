@@ -17,7 +17,6 @@ def rotate_vector(vector: np.array([float, float]), angle: int) -> np.array:
 
     return post_vector
 
-
 def angle_between(angle_base: int, angle: int) -> int:
     """
     :param angle_base: Input angle A
@@ -25,7 +24,6 @@ def angle_between(angle_base: int, angle: int) -> int:
     :return: angle A-B normalize to [-180,180)
     """
     return ((angle_base - angle) + 180) % 360 - 180
-
 
 def distance_between(dot1: np.array, dot2: np.array) -> float:
     """
